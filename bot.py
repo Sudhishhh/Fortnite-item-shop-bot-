@@ -5,6 +5,7 @@ Generates a styled item-shop image grouped by section and posts it to X (Twitter
 
 import math
 import os
+import time
 import requests
 import tweepy
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -38,6 +39,9 @@ def env_bool(name, default=False):
 
 ENABLE_TWEET = env_bool("ENABLE_TWEET", default=False)
 SHOW_IMAGE_PREVIEW = env_bool("SHOW_IMAGE_PREVIEW", default=True)
+FAIL_ON_TWEET_ERROR = env_bool("FAIL_ON_TWEET_ERROR", default=False)
+TWITTER_RETRY_ATTEMPTS = max(1, int(os.getenv("TWITTER_RETRY_ATTEMPTS", "4")))
+TWITTER_RETRY_BASE_SECONDS = max(1.0, float(os.getenv("TWITTER_RETRY_BASE_SECONDS", "3")))
 
 
 def validate_runtime_config():
@@ -515,6 +519,43 @@ def group_by_section(shop):
 # ═══════════════════════════════════════════
 #             TWITTER POSTING
 # ═══════════════════════════════════════════
+def is_retryable_twitter_error(exc):
+    status_code = getattr(exc, "status_code", None)
+    if status_code in (429, 500, 502, 503, 504):
+        return True
+
+    msg = str(exc).lower()
+    retry_signals = (
+        "service unavailable",
+        "temporarily unavailable",
+        "too many requests",
+        "timed out",
+        "timeout",
+        "bad gateway",
+        "gateway timeout",
+        "connection reset",
+        "503",
+    )
+    return any(signal in msg for signal in retry_signals)
+
+
+def run_with_retries(action_name, fn):
+    for attempt in range(1, TWITTER_RETRY_ATTEMPTS + 1):
+        try:
+            return fn()
+        except Exception as exc:
+            can_retry = is_retryable_twitter_error(exc)
+            if attempt >= TWITTER_RETRY_ATTEMPTS or not can_retry:
+                raise
+
+            delay = TWITTER_RETRY_BASE_SECONDS * (2 ** (attempt - 1))
+            print(
+                f"{action_name} failed ({exc}). "
+                f"Retrying in {delay:.1f}s ({attempt}/{TWITTER_RETRY_ATTEMPTS})..."
+            )
+            time.sleep(delay)
+
+
 def tweet_image(image_path, date_str):
     auth = tweepy.OAuth1UserHandler(
         TWITTER_API_KEY, TWITTER_API_SECRET,
@@ -530,10 +571,16 @@ def tweet_image(image_path, date_str):
     )
 
     print("Uploading media to Twitter...")
-    media = v1.media_upload(filename=image_path)
+    media = run_with_retries(
+        "Media upload",
+        lambda: v1.media_upload(filename=image_path),
+    )
 
     body = f"Fortnite Item Shop - {date_str}\n#Fortnite #ItemShop #FNItemShop"
-    resp = v2.create_tweet(text=body, media_ids=[media.media_id_string])
+    resp = run_with_retries(
+        "Tweet creation",
+        lambda: v2.create_tweet(text=body, media_ids=[media.media_id_string]),
+    )
     print(f"Tweet posted! ID: {resp.data['id']}")
 
 
@@ -570,7 +617,12 @@ def main():
 
     if ENABLE_TWEET:
         print("Posting to Twitter...")
-        tweet_image(COLLAGE_FILENAME, date_str)
+        try:
+            tweet_image(COLLAGE_FILENAME, date_str)
+        except Exception as exc:
+            print(f"Twitter posting failed after retries: {exc}")
+            if FAIL_ON_TWEET_ERROR:
+                raise
     else:
         print("Twitter post skipped (set ENABLE_TWEET=true to enable posting).")
 
