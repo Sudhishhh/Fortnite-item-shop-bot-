@@ -42,6 +42,7 @@ SHOW_IMAGE_PREVIEW = env_bool("SHOW_IMAGE_PREVIEW", default=True)
 FAIL_ON_TWEET_ERROR = env_bool("FAIL_ON_TWEET_ERROR", default=False)
 TWITTER_RETRY_ATTEMPTS = max(1, int(os.getenv("TWITTER_RETRY_ATTEMPTS", "4")))
 TWITTER_RETRY_BASE_SECONDS = max(1.0, float(os.getenv("TWITTER_RETRY_BASE_SECONDS", "3")))
+TWEET_SUFFIX = os.getenv("TWEET_SUFFIX", "").strip()
 
 
 def validate_runtime_config():
@@ -577,9 +578,11 @@ def tweet_image(image_path, date_str):
     )
 
     body = f"Fortnite Item Shop - {date_str}\n#Fortnite #ItemShop #FNItemShop"
+    if TWEET_SUFFIX:
+        body = f"{body}\n{TWEET_SUFFIX}"
     resp = run_with_retries(
         "Tweet creation",
-        lambda: v2.create_tweet(text=body, media_ids=[media.media_id_string]),
+        lambda: v2.create_tweet(text=body, media_ids=[media.media_id_string], user_auth=True),
     )
     print(f"Tweet posted! ID: {resp.data['id']}")
 

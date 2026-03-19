@@ -34,4 +34,6 @@ jobs:
           TWITTER_HANDLE: ${{ secrets.TWITTER_HANDLE }}
           ENABLE_TWEET: "true"
           SHOW_IMAGE_PREVIEW: "false"
+          FAIL_ON_TWEET_ERROR: "true"
+          TWEET_SUFFIX: ${{ github.event_name == 'workflow_dispatch' && format('manual-run-{0}', github.run_number) || '' }}
         run: python bot.py
