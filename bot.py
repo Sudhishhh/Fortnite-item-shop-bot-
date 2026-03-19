@@ -582,7 +582,7 @@ def tweet_image(image_path, date_str):
         body = f"{body}\n{TWEET_SUFFIX}"
     resp = run_with_retries(
         "Tweet creation",
-        lambda: v2.create_tweet(text=body, media_ids=[media.media_id_string], user_auth=True),
+        lambda: v2.create_tweet(text=body, media_ids=[media.media_id_string]),
     )
     print(f"Tweet posted! ID: {resp.data['id']}")
 
