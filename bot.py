@@ -580,11 +580,24 @@ def tweet_image(image_path, date_str):
     body = f"Fortnite Item Shop - {date_str}\n#Fortnite #ItemShop #FNItemShop"
     if TWEET_SUFFIX:
         body = f"{body}\n{TWEET_SUFFIX}"
-    resp = run_with_retries(
-        "Tweet creation",
-        lambda: v2.create_tweet(text=body, media_ids=[media.media_id_string]),
-    )
-    print(f"Tweet posted! ID: {resp.data['id']}")
+    try:
+        resp = run_with_retries(
+            "Tweet creation (v2)",
+            lambda: v2.create_tweet(text=body, media_ids=[media.media_id_string]),
+        )
+        tweet_id = (resp.data or {}).get("id") if resp else None
+        if tweet_id:
+            print(f"Tweet posted! ID: {tweet_id}")
+        else:
+            print("Tweet posted via v2.")
+    except Exception as exc:
+        print(f"v2 tweet creation failed after retries: {exc}")
+        print("Falling back to Twitter API v1.1 statuses/update...")
+        status = run_with_retries(
+            "Tweet creation (v1.1 fallback)",
+            lambda: v1.update_status(status=body, media_ids=[media.media_id_string]),
+        )
+        print(f"Tweet posted via v1.1 fallback! ID: {status.id}")
 
 
 # ═══════════════════════════════════════════
