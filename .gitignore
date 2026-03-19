@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Runtime outputs
+itemshop_collage.png
+
+# Secrets
+.env
+.env.*
+token.txt
